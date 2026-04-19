@@ -379,7 +379,8 @@ async function loadAll() {
       'atualizado ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
     renderAll();
   } catch(e) {
-    showError('Erro ao carregar dados: ' + e.message + '. Verifique se a planilha está pública.');
+    showError('Erro ao carregar dados da planilha. Verifique se ela está pública (Compartilhar → Qualquer pessoa com o link → Leitor).');
+    console.error(e);
   }
   showLoading(false);
 }
@@ -886,18 +887,41 @@ function renderAll() {
 // ── UTILS ─────────────────────────────────────────────────────
 function parseDateBR(str) {
   if (!str) return null;
+
+  // Número serial do Google Sheets (ex: 46125)
   if (typeof str === 'number') {
-    // Google Sheets date serial
-    const d = new Date((str - 25569) * 86400 * 1000);
-    return isNaN(d) ? null : d;
+    const utcDays = Math.floor(str) - 25569;
+    const d = new Date(utcDays * 86400 * 1000);
+    if (isNaN(d)) return null;
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   }
-  const parts = str.split('/');
-  if (parts.length === 3) return new Date(`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`);
-  return new Date(str);
+
+  // String DD/MM/AAAA
+  if (typeof str === 'string') {
+    const s = str.trim();
+    if (s.includes('/')) {
+      const p = s.split('/');
+      if (p.length === 3) {
+        const d = new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0]));
+        return isNaN(d) ? null : d;
+      }
+    }
+    // ISO AAAA-MM-DD
+    if (s.includes('-')) {
+      const p = s.split('-');
+      if (p.length === 3) {
+        const d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+        return isNaN(d) ? null : d;
+      }
+    }
+  }
+  return null;
 }
 
 function getISOWeek(date) {
+  if (!date) return null;
   const d = new Date(date);
+  if (isNaN(d)) return null;
   d.setHours(0,0,0,0);
   d.setDate(d.getDate() + 4 - (d.getDay()||7));
   const yearStart = new Date(d.getFullYear(),0,1);
