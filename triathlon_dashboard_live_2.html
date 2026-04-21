@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Triathlon Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #080810;
+  --surface: #101018;
+  --surface2: #181826;
+  --surface3: #1e1e30;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #eeeef8;
+  --muted: rgba(238,238,248,0.38);
+  --muted2: rgba(238,238,248,0.6);
+  --run: #00e5a0;
+  --bike: #4d9fff;
+  --swim: #c47dff;
+  --gym: #ff9f43;
+  --accent: #ff5f3d;
+  --up: #00e5a0;
+  --down: #ff5f3d;
+  --mono: 'DM Mono', monospace;
+  --display: 'Syne', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--display);
+  min-height: 100vh;
+  padding: 28px 32px 48px;
+  background-image:
+    radial-gradient(ellipse 700px 350px at 90% -5%, rgba(77,159,255,0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 300px at 0% 100%, rgba(0,229,160,0.05) 0%, transparent 70%);
+}
+
+/* LOADING */
+#loading {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px; z-index: 999;
+  transition: opacity .4s ease;
+}
+#loading.hidden { opacity: 0; pointer-events: none; }
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--surface2);
+  border-top-color: var(--run);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* ERROR */
+#error-banner {
+  display: none;
+  background: rgba(255,95,61,0.1);
+  border: 1px solid rgba(255,95,61,0.3);
+  border-radius: 12px;
+  padding: 14px 20px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--down);
+  margin-bottom: 20px;
+}
+
+/* HEADER */
+.header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:16px; }
+.header-left h1 { font-size:26px; font-weight:800; letter-spacing:-0.5px; line-height:1; }
+.header-left p { font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:5px; letter-spacing:.06em; }
+.header-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+
+/* FILTER */
+.date-filter { display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 14px; flex-wrap:wrap; }
+.btn-preset { background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--muted2); font-family:var(--mono); font-size:11px; padding:5px 10px; cursor:pointer; transition:all .2s; }
+.btn-preset:hover, .btn-preset.active { border-color:var(--run); color:var(--run); }
+.btn-refresh { background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--muted2); font-family:var(--mono); font-size:11px; padding:5px 12px; cursor:pointer; transition:all .2s; display:flex; align-items:center; gap:6px; }
+.btn-refresh:hover { border-color:var(--bike); color:var(--bike); }
+.last-sync { font-family:var(--mono); font-size:10px; color:var(--muted); }
+
+/* COUNTDOWN */
+.countdown-bar { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 24px; margin-bottom:20px; display:flex; align-items:center; gap:20px; }
+.countdown-label { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; white-space:nowrap; }
+.countdown-num { font-size:20px; font-weight:800; color:var(--accent); white-space:nowrap; margin-top:2px; }
+.countdown-track { flex:1; height:6px; background:var(--surface2); border-radius:99px; overflow:hidden; }
+.countdown-fill { height:100%; border-radius:99px; background:linear-gradient(90deg,var(--run),var(--bike)); transition: width .8s ease; }
+.countdown-pct { font-family:var(--mono); font-size:12px; color:var(--muted2); white-space:nowrap; }
+
+/* CARDS */
+.cards-row { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:20px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px; position:relative; overflow:hidden; transition:border-color .2s; animation:fadeUp .35s ease both; }
+.card:hover { border-color:var(--border2); }
+.card-glow { position:absolute; width:90px; height:90px; border-radius:50%; top:-25px; right:-25px; filter:blur(35px); opacity:.13; }
+.card-dot { width:7px; height:7px; border-radius:50%; margin-bottom:10px; }
+.card-label { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; }
+.card-value { font-size:32px; font-weight:800; line-height:1; letter-spacing:-1px; margin-bottom:8px; }
+.card-sub { font-family:var(--mono); font-size:11px; color:var(--muted); }
+.meta-ring-wrap { display:flex; align-items:center; gap:10px; margin-top:10px; }
+.meta-ring { position:relative; width:36px; height:36px; flex-shrink:0; }
+.meta-ring svg { transform:rotate(-90deg); }
+.meta-ring-val { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9px; font-weight:500; }
+.meta-text { font-family:var(--mono); font-size:10px; color:var(--muted); line-height:1.5; }
+.meta-text strong { color:var(--text); }
+.badge { display:inline-flex; align-items:center; gap:3px; font-family:var(--mono); font-size:10px; padding:3px 7px; border-radius:99px; margin-top:6px; }
+.badge-up { background:rgba(0,229,160,.1); color:var(--up); }
+.badge-down { background:rgba(255,95,61,.1); color:var(--down); }
+.badge-neutral { background:rgba(255,255,255,.06); color:var(--muted2); }
+
+/* PANELS */
+.panel { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:22px; animation:fadeUp .4s ease both; }
+.panel-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px; gap:12px; }
+.panel-title { font-size:13px; font-weight:700; letter-spacing:-.2px; }
+.panel-sub { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:2px; }
+.legend { display:flex; gap:14px; flex-wrap:wrap; }
+.legend-item { display:flex; align-items:center; gap:5px; font-family:var(--mono); font-size:10px; color:var(--muted); }
+.legend-dot { width:7px; height:7px; border-radius:2px; }
+
+/* LAYOUTS */
+.row2  { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:20px; }
+.row3  { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
+.row2b { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+
+/* BAR CHART */
+.bar-chart { display:flex; align-items:flex-end; gap:6px; height:130px; }
+.bar-group { flex:1; display:flex; flex-direction:column; align-items:center; height:100%; justify-content:flex-end; }
+.bar-stack { width:100%; display:flex; flex-direction:column; justify-content:flex-end; gap:2px; flex:1; max-height:100%; }
+.bar-seg { width:100%; border-radius:3px 3px 0 0; transition:opacity .2s; min-height:2px; }
+.bar-seg:hover { opacity:.75; }
+.bar-label { font-family:var(--mono); font-size:9px; color:var(--muted); margin-top:6px; text-align:center; }
+.bar-current .bar-label { color:var(--text); }
+
+/* RADAR */
+#radar-svg { display:block; margin:0 auto; }
+
+/* ZONES */
+.zone-chart { display:flex; flex-direction:column; gap:8px; }
+.zone-row { display:flex; align-items:center; gap:8px; }
+.zone-name { font-family:var(--mono); font-size:10px; color:var(--muted); width:20px; text-align:right; }
+.zone-track { flex:1; height:18px; background:var(--surface2); border-radius:3px; overflow:hidden; }
+.zone-fill { height:100%; border-radius:3px; display:flex; align-items:center; padding-left:6px; font-family:var(--mono); font-size:9px; color:rgba(0,0,0,.75); font-weight:500; transition:width .8s ease; }
+.zone-pct { font-family:var(--mono); font-size:10px; color:var(--muted); width:32px; text-align:right; }
+
+/* PACE */
+.pace-chart { position:relative; height:90px; margin-top:6px; }
+.pace-svg { width:100%; height:100%; overflow:visible; }
+
+/* SPORT PROGRESS */
+.sport-rows { display:flex; flex-direction:column; gap:12px; }
+.sport-row { display:flex; flex-direction:column; gap:5px; }
+.sport-row-header { display:flex; justify-content:space-between; align-items:center; }
+.sport-name { font-size:12px; font-weight:600; display:flex; align-items:center; gap:5px; }
+.sport-dot { width:6px; height:6px; border-radius:50%; }
+.sport-val { font-family:var(--mono); font-size:11px; }
+.sport-track { height:4px; background:var(--surface2); border-radius:99px; overflow:hidden; }
+.sport-fill { height:100%; border-radius:99px; transition:width .8s ease; }
+.sport-meta { display:flex; justify-content:space-between; font-family:var(--mono); font-size:9px; color:var(--muted); }
+
+/* VO2 */
+.vo2-display { display:flex; align-items:baseline; gap:5px; margin:10px 0 4px; }
+.vo2-num { font-size:46px; font-weight:800; letter-spacing:-2px; line-height:1; background:linear-gradient(135deg,var(--run),var(--bike)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.vo2-unit { font-family:var(--mono); font-size:11px; color:var(--muted); }
+.vo2-bars { display:flex; gap:4px; align-items:flex-end; height:36px; margin-top:14px; }
+.vo2-bar { flex:1; height:100%; border-radius:3px; background:var(--surface2); position:relative; }
+.vo2-bar-fill { position:absolute; bottom:0; left:0; right:0; border-radius:3px; transition:height .6s ease; }
+
+/* SWIM */
+.swim-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px; }
+.swim-stat { background:var(--surface2); border-radius:10px; padding:12px; }
+.swim-stat-label { font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; }
+.swim-stat-val { font-size:20px; font-weight:800; letter-spacing:-.5px; color:var(--swim); }
+.swim-stat-sub { font-family:var(--mono); font-size:9px; color:var(--muted); margin-top:2px; }
+.swim-pace-chart { height:70px; margin-top:12px; }
+
+/* HEATMAP */
+.heatmap { display:flex; flex-direction:column; gap:4px; margin-top:4px; }
+.heatmap-row { display:flex; gap:4px; align-items:center; }
+.heatmap-day-label { font-family:var(--mono); font-size:9px; color:var(--muted); width:24px; }
+.heatmap-cell { width:18px; height:18px; border-radius:3px; cursor:pointer; transition:transform .15s; flex-shrink:0; }
+.heatmap-cell:hover { transform:scale(1.2); }
+
+/* EMPTY STATE */
+.empty { font-family:var(--mono); font-size:12px; color:var(--muted); text-align:center; padding:32px; }
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--surface3); border-radius:99px; }
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Carregando dados do Strava...</div>
+</div>
+
+<!-- ERROR -->
+<div id="error-banner"></div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <h1>Triathlon Dashboard</h1>
+    <p>SUPER SPRINT · 16 AGO 2026 · <span id="periodo-label">ÚLTIMAS 8 SEMANAS</span></p>
+  </div>
+  <div class="header-right">
+    <div class="date-filter">
+      <button class="btn-preset" onclick="setPreset(4,this)">4 sem</button>
+      <button class="btn-preset active" onclick="setPreset(8,this)">8 sem</button>
+      <button class="btn-preset" onclick="setPreset(12,this)">12 sem</button>
+      <button class="btn-preset" onclick="setPreset(999,this)">Tudo</button>
+    </div>
+    <button class="btn-refresh" onclick="loadAll()">↻ Atualizar</button>
+    <div class="last-sync" id="last-sync"></div>
+  </div>
+</div>
+
+<!-- COUNTDOWN -->
+<div class="countdown-bar">
+  <div>
+    <div class="countdown-label">Prova em</div>
+    <div class="countdown-num" id="countdown-num">—</div>
+  </div>
+  <div class="countdown-track">
+    <div class="countdown-fill" id="countdown-fill" style="width:0%"></div>
+  </div>
+  <div class="countdown-pct" id="countdown-pct">calculando...</div>
+</div>
+
+<!-- CARDS -->
+<div class="cards-row" id="cards-row">
+  <div class="card"><div class="empty">carregando...</div></div>
+  <div class="card"><div class="empty">carregando...</div></div>
+  <div class="card"><div class="empty">carregando...</div></div>
+  <div class="card"><div class="empty">carregando...</div></div>
+  <div class="card"><div class="empty">carregando...</div></div>
+</div>
+
+<!-- ROW 1 -->
+<div class="row2">
+  <div class="panel">
+    <div class="panel-header">
+      <div><div class="panel-title">Volume semanal</div><div class="panel-sub">km por modalidade</div></div>
+      <div class="legend" id="bar-legend"></div>
+    </div>
+    <div class="bar-chart" id="bar-chart"><div class="empty">carregando...</div></div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">
+      <div><div class="panel-title">Perfil semanal</div><div class="panel-sub">atual vs meta · radar</div></div>
+    </div>
+    <svg id="radar-svg" width="200" height="200" viewBox="0 0 200 200"></svg>
+    <div class="legend" style="justify-content:center;margin-top:10px">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--run);opacity:.5"></div>Meta</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--bike)"></div>Atual</div>
+    </div>
+  </div>
+</div>
+
+<!-- ROW 2 -->
+<div class="row3">
+  <div class="panel">
+    <div class="panel-header">
+      <div><div class="panel-title">Progresso semanal</div><div class="panel-sub">vs semana anterior</div></div>
+    </div>
+    <div class="sport-rows" id="progress-rows"><div class="empty">carregando...</div></div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">
+      <div><div class="panel-title">Evolução de pace</div><div class="panel-sub">corrida · min/km</div></div>
+      <div class="badge badge-up" id="pace-badge"></div>
+    </div>
+    <div class="pace-chart">
+      <svg class="pace-svg" id="pace-svg" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px">
+      <span style="font-family:var(--mono);font-size:9px;color:var(--muted)" id="pace-start-label"></span>
+      <span style="font-family:var(--mono);font-size:9px;color:var(--muted)" id="pace-end-label"></span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">
+      <div><div class="panel-title">Zonas de FC</div><div class="panel-sub">% tempo · semana atual</div></div>
+    </div>
+    <div class="zone-chart" id="zone-chart"><div class="empty">carregando...</div></div>
+  </div>
+</div>
+
+<!-- ROW 3 -->
+<div class="row2b">
+  <div class="panel">
+    <div class="panel-header">
+      <div><div class="panel-title">Métricas de natação</div><div class="panel-sub">pace, SWOLF e evolução</div></div>
+    </div>
+    <div class="swim-grid" id="swim-grid"><div class="empty" style="grid-column:span 2">carregando...</div></div>
+    <div class="swim-pace-chart">
+      <svg id="swim-pace-svg" width="100%" height="70" viewBox="0 0 400 70" preserveAspectRatio="none"></svg>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:4px">
+      <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">evolução pace 100m · semanas</span>
+      <span style="font-family:var(--mono);font-size:9px;color:var(--swim)" id="swim-trend"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div><div class="panel-title">Resumo geral</div><div class="panel-sub">totais por modalidade</div></div>
+    </div>
+    <div id="resumo-table"><div class="empty">carregando...</div></div>
+
+    <div style="margin-top:20px">
+      <div class="panel-title" style="font-size:12px;margin-bottom:10px">Heatmap de treinos</div>
+      <div class="heatmap" id="heatmap"></div>
+      <div class="legend" style="margin-top:8px;gap:10px">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--run)"></div>Corrida</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--bike)"></div>Bike</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--swim)"></div>Natação</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--gym)"></div>Academia</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────
+const SHEET_ID = '1N5LekpHXEEk__21sqZGNGtbNqsFU9NcyhUNYyw5_K1A';
+const METAS    = { Corrida:2, Bike:1, 'Natação':3, 'Academia':3 };
+const SPORT_COLOR = { Corrida:'var(--run)', Bike:'var(--bike)', 'Natação':'var(--swim)', 'Academia':'var(--gym)', 'Bike (virtual)':'var(--bike)' };
+const PROVA_DATE  = new Date('2026-08-16');
+const PREP_START  = new Date('2026-01-01');
+
+let allSemanal   = [];
+let allAtividades = [];
+let allZonas     = [];
+let allResumo    = [];
+let visibleN     = 8;
+
+// ── FETCH SHEETS ──────────────────────────────────────────────
+async function fetchSheet(aba) {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(aba)}`;
+  const res  = await fetch(url);
+  const text = await res.text();
+  const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*?)\);/)[1]);
+  if (!json.table || !json.table.rows) return [];
+  const cols = json.table.cols.map(c => c.label);
+  return json.table.rows
+    .filter(row => row.c && row.c.some(c => c && c.v !== null && c.v !== ''))
+    .map(row => {
+      const obj = {};
+      row.c.forEach((cell, i) => { obj[cols[i]] = cell ? cell.v : null; });
+      return obj;
+    });
+}
+
+// ── LOAD ALL ──────────────────────────────────────────────────
+async function loadAll() {
+  showLoading(true);
+  hideError();
+  try {
+    const [semanal, atividades, zonas, resumo] = await Promise.all([
+      fetchSheet('Semanal'),
+      fetchSheet('Atividades'),
+      fetchSheet('Zonas FC'),
+      fetchSheet('Resumo'),
+    ]);
+    allSemanal    = semanal;
+    allAtividades = atividades;
+    allZonas      = zonas;
+    allResumo     = resumo;
+    document.getElementById('last-sync').textContent =
+      'atualizado ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    renderAll();
+  } catch(e) {
+    showError('Erro ao carregar dados da planilha. Verifique se ela está pública (Compartilhar → Qualquer pessoa com o link → Leitor).');
+    console.error(e);
+  }
+  showLoading(false);
+}
+
+function showLoading(v) {
+  const el = document.getElementById('loading');
+  el.classList.toggle('hidden', !v);
+}
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.style.display = 'block';
+  el.textContent   = '⚠ ' + msg;
+}
+function hideError() {
+  document.getElementById('error-banner').style.display = 'none';
+}
+
+// ── PRESET FILTER ─────────────────────────────────────────────
+function setPreset(n, btn) {
+  document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  visibleN = n;
+  const label = n === 999 ? 'TODOS OS DADOS' : `ÚLTIMAS ${n} SEMANAS`;
+  document.getElementById('periodo-label').textContent = label;
+  renderAll();
+}
+
+// ── GET VISIBLE WEEKS ─────────────────────────────────────────
+function getWeeks() {
+  return allSemanal.slice(-Math.min(visibleN, allSemanal.length));
+}
+
+// ── COUNTDOWN ─────────────────────────────────────────────────
+function renderCountdown() {
+  const now        = new Date();
+  const msWeek     = 7*24*60*60*1000;
+  const weeksLeft  = Math.max(0, Math.ceil((PROVA_DATE - now) / msWeek));
+  const totalWeeks = Math.round((PROVA_DATE - PREP_START) / msWeek);
+  const doneWeeks  = Math.max(0, totalWeeks - weeksLeft);
+  const pct        = Math.min(100, Math.round((doneWeeks / totalWeeks) * 100));
+  document.getElementById('countdown-num').textContent   = `${weeksLeft} semanas`;
+  document.getElementById('countdown-fill').style.width  = pct + '%';
+  document.getElementById('countdown-pct').textContent   = `${pct}% da preparação concluída · prova 16/08/2026`;
+}
+
+// ── CARDS ─────────────────────────────────────────────────────
+function renderCards() {
+  const weeks = getWeeks();
+  if (!weeks.length) return;
+  const cur  = weeks[weeks.length - 1];
+  const prev = weeks[weeks.length - 2] || cur;
+
+  const sports = [
+    { key:'Corrida',  acts: cur['Atividades'] ? null : null, km: parseFloat(cur['Corrida km'])||0,   prevKm: parseFloat(prev['Corrida km'])||0 },
+    { key:'Bike',     km: parseFloat(cur['Bike km'])||0,     prevKm: parseFloat(prev['Bike km'])||0 },
+    { key:'Natação',  km: parseFloat(cur['Natação km'])||0,  prevKm: parseFloat(prev['Natação km'])||0 },
+    { key:'Academia', km: null, prevKm: null },
+  ];
+
+  // Conta atividades da semana atual e anterior por tipo
+  const curSemana  = cur['Semana'];
+  const prevSemana = prev['Semana'];
+
+  function countActs(semana, tipo) {
+    return allAtividades.filter(a => {
+      if (!a['Data'] || !a['Tipo']) return false;
+      // tenta bater semana via data
+      const d = parseDateBR(a['Data']);
+      if (!d) return false;
+      return getISOWeek(d) === semana && normalizeTipo(a['Tipo']) === tipo;
+    }).length;
+  }
+
+  const sportKeys = ['Corrida','Bike','Natação','Academia'];
+  const curActs   = {};
+  const prevActs  = {};
+  sportKeys.forEach(k => {
+    curActs[k]  = countActs(curSemana, k);
+    prevActs[k] = countActs(prevSemana, k);
+  });
+
+  // Fallback: se não conseguiu contar, usa km como proxy
+  const container = document.getElementById('cards-row');
+  container.innerHTML = '';
+
+  sportKeys.forEach(k => {
+    const km     = k === 'Academia' ? null : parseFloat(cur[k === 'Natação' ? 'Natação km' : k === 'Corrida' ? 'Corrida km' : 'Bike km']) || 0;
+    const prevKm = k === 'Academia' ? null : parseFloat(prev[k === 'Natação' ? 'Natação km' : k === 'Corrida' ? 'Corrida km' : 'Bike km']) || 0;
+    const acts   = curActs[k];
+    const pActs  = prevActs[k];
+    const meta   = METAS[k] || 1;
+    const pct    = Math.min(acts / meta, 1);
+    const diff   = acts - pActs;
+    const r = 15; const circ = 2*Math.PI*r; const dash = pct*circ;
+    const met    = acts >= meta;
+    const badgeClass = diff > 0 ? 'badge-up' : diff < 0 ? 'badge-down' : 'badge-neutral';
+    const badgeText  = diff > 0 ? `↑ +${diff} vs ant.` : diff < 0 ? `↓ ${diff} vs ant.` : '= igual ant.';
+    const color  = SPORT_COLOR[k] || 'var(--muted)';
+
+    container.innerHTML += `
+      <div class="card">
+        <div class="card-glow" style="background:${color}"></div>
+        <div class="card-dot" style="background:${color}"></div>
+        <div class="card-label">${k}</div>
+        <div class="card-value" style="color:${color}">${acts}</div>
+        <div class="card-sub">sessões${km !== null ? ` · ${km.toFixed(1)} km` : ''}</div>
+        <div class="badge ${badgeClass}">${badgeText}</div>
+        <div class="meta-ring-wrap" style="margin-top:10px">
+          <div class="meta-ring">
+            <svg width="36" height="36" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="${r}" fill="none" stroke="var(--surface2)" stroke-width="3"/>
+              <circle cx="18" cy="18" r="${r}" fill="none" stroke="${met?'var(--up)':color}" stroke-width="3"
+                stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"/>
+            </svg>
+            <div class="meta-ring-val" style="color:${met?'var(--up)':'var(--muted2)'}">${Math.round(pct*100)}%</div>
+          </div>
+          <div class="meta-text">meta: <strong>${meta}×</strong><br>${met ? '✓ atingida' : `${meta-acts} restante${meta-acts!==1?'s':''}`}</div>
+        </div>
+      </div>`;
+  });
+
+  // Card tempo total
+  const totalMin = parseFloat(cur['Tempo Total (h)'])||0;
+  const h = Math.floor(totalMin); const m = Math.round((totalMin - h)*60);
+  const prevMin = parseFloat(prev['Tempo Total (h)'])||0;
+  const tDiff = prevMin > 0 ? ((totalMin-prevMin)/prevMin*100).toFixed(0) : 0;
+  const suffer = cur['Suffer Score Total'] || '—';
+
+  container.innerHTML += `
+    <div class="card">
+      <div class="card-glow" style="background:var(--accent)"></div>
+      <div class="card-dot" style="background:var(--accent)"></div>
+      <div class="card-label">Tempo total</div>
+      <div class="card-value">${h}<span style="font-size:16px;font-weight:400">h</span>${m}<span style="font-size:16px;font-weight:400">m</span></div>
+      <div class="card-sub">${cur['Atividades']||0} atividades</div>
+      <div class="badge ${parseFloat(tDiff)>=0?'badge-up':'badge-down'}">${parseFloat(tDiff)>=0?'↑ +':'↓ '}${Math.abs(tDiff)}% vs ant.</div>
+      <div class="meta-text" style="margin-top:10px;font-family:var(--mono);font-size:10px;color:var(--muted)">
+        Suffer score: <span style="color:var(--accent)">${suffer}</span>
+      </div>
+    </div>`;
+}
+
+// ── BAR CHART ─────────────────────────────────────────────────
+function renderBars() {
+  const weeks  = getWeeks();
+  const chart  = document.getElementById('bar-chart');
+  chart.innerHTML = '';
+  if (!weeks.length) { chart.innerHTML = '<div class="empty">sem dados</div>'; return; }
+
+  const maxTotal = Math.max(...weeks.map(w => (parseFloat(w['Corrida km'])||0) + (parseFloat(w['Bike km'])||0)/5 + (parseFloat(w['Natação km'])||0)*8));
+
+  weeks.forEach((w, i) => {
+    const isCurrent = i === weeks.length - 1;
+    const runKm  = parseFloat(w['Corrida km'])||0;
+    const bikeKm = parseFloat(w['Bike km'])||0;
+    const swimKm = parseFloat(w['Natação km'])||0;
+    const total  = runKm + bikeKm/5 + swimKm*8;
+    const pct    = maxTotal > 0 ? total/maxTotal : 0;
+    const swimH  = total > 0 ? (swimKm*8/total)*pct*115 : 0;
+    const bikeH  = total > 0 ? (bikeKm/5/total)*pct*115 : 0;
+    const runH   = total > 0 ? (runKm/total)*pct*115 : 0;
+
+    const group = document.createElement('div');
+    group.className = 'bar-group' + (isCurrent?' bar-current':'');
+    group.innerHTML = `
+      <div class="bar-stack">
+        <div class="bar-seg" style="height:${swimH.toFixed(1)}px;background:var(--swim)"></div>
+        <div class="bar-seg" style="height:${bikeH.toFixed(1)}px;background:var(--bike);border-radius:0"></div>
+        <div class="bar-seg" style="height:${runH.toFixed(1)}px;background:var(--run);border-radius:0"></div>
+      </div>
+      <div class="bar-label">${w['Semana']||''}</div>`;
+    chart.appendChild(group);
+  });
+
+  document.getElementById('bar-legend').innerHTML = [
+    ['var(--run)','Corrida'],['var(--bike)','Bike'],['var(--swim)','Natação']
+  ].map(([c,l]) => `<div class="legend-item"><div class="legend-dot" style="background:${c}"></div>${l}</div>`).join('');
+}
+
+// ── RADAR ─────────────────────────────────────────────────────
+function renderRadar() {
+  const weeks = getWeeks();
+  if (!weeks.length) return;
+  const cur = weeks[weeks.length-1];
+  const svg = document.getElementById('radar-svg');
+  const cx=100,cy=100,r=68;
+
+  // Conta atividades semana atual
+  const curSemana = cur['Semana'];
+  const labels  = ['Corrida','Bike','Natação','Academia'];
+  const metaVals = labels.map(k => METAS[k]||1);
+  const curVals  = labels.map(k => {
+    return allAtividades.filter(a => {
+      const d = parseDateBR(a['Data']);
+      return d && getISOWeek(d) === curSemana && normalizeTipo(a['Tipo']) === k;
+    }).length;
+  });
+
+  const n = labels.length;
+  const angle = i => (i/n)*2*Math.PI - Math.PI/2;
+  const pt = (val,max,i) => {
+    const ratio = Math.min(val/Math.max(max,1),1.15);
+    return [cx+r*ratio*Math.cos(angle(i)), cy+r*ratio*Math.sin(angle(i))];
+  };
+
+  let html = '';
+  [0.25,0.5,0.75,1].forEach(g => {
+    const pts = Array.from({length:n},(_,i) => `${cx+r*g*Math.cos(angle(i))},${cy+r*g*Math.sin(angle(i))}`).join(' ');
+    html += `<polygon points="${pts}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`;
+  });
+  for(let i=0;i<n;i++) {
+    html += `<line x1="${cx}" y1="${cy}" x2="${cx+r*Math.cos(angle(i))}" y2="${cy+r*Math.sin(angle(i))}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+  }
+  const metaPts = metaVals.map((v,i) => pt(v,v,i).join(',')).join(' ');
+  html += `<polygon points="${metaPts}" fill="rgba(0,229,160,0.08)" stroke="rgba(0,229,160,0.3)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  const curPts = curVals.map((v,i) => pt(v,metaVals[i],i).join(',')).join(' ');
+  html += `<polygon points="${curPts}" fill="rgba(77,159,255,0.18)" stroke="var(--bike)" stroke-width="2"/>`;
+  curVals.forEach((v,i) => {
+    const [x,y] = pt(v,metaVals[i],i);
+    html += `<circle cx="${x}" cy="${y}" r="4" fill="var(--bike)" stroke="var(--bg)" stroke-width="1.5"/>`;
+  });
+  labels.forEach((label,i) => {
+    const lx = cx+(r+18)*Math.cos(angle(i));
+    const ly = cy+(r+18)*Math.sin(angle(i));
+    const anchor = lx<cx-5?'end':lx>cx+5?'start':'middle';
+    html += `<text x="${lx}" y="${ly+4}" text-anchor="${anchor}" fill="rgba(238,238,248,0.45)" font-family="DM Mono,monospace" font-size="9">${label}</text>`;
+  });
+  svg.innerHTML = html;
+}
+
+// ── PROGRESS ──────────────────────────────────────────────────
+function renderProgress() {
+  const weeks = getWeeks();
+  if (weeks.length < 2) return;
+  const cur  = weeks[weeks.length-1];
+  const prev = weeks[weeks.length-2];
+  const container = document.getElementById('progress-rows');
+  container.innerHTML = '';
+
+  const sports = [
+    { key:'Corrida',  curV: parseFloat(cur['Corrida km'])||0,  prevV: parseFloat(prev['Corrida km'])||0,  unit:'km' },
+    { key:'Bike',     curV: parseFloat(cur['Bike km'])||0,     prevV: parseFloat(prev['Bike km'])||0,     unit:'km' },
+    { key:'Natação',  curV: parseFloat(cur['Natação km'])||0,  prevV: parseFloat(prev['Natação km'])||0,  unit:'km' },
+    { key:'Suffer',   curV: parseFloat(cur['Suffer Score Total'])||0, prevV: parseFloat(prev['Suffer Score Total'])||0, unit:'pts' },
+  ];
+
+  sports.forEach(s => {
+    const diff = s.prevV > 0 ? ((s.curV-s.prevV)/s.prevV*100).toFixed(0) : 0;
+    const up   = parseFloat(diff) >= 0;
+    const pct  = Math.min(Math.abs(parseFloat(diff))/50,1)*100;
+    const color = s.key === 'Suffer' ? 'var(--accent)' : SPORT_COLOR[s.key]||'var(--muted)';
+    container.innerHTML += `
+      <div class="sport-row">
+        <div class="sport-row-header">
+          <span class="sport-name"><span class="sport-dot" style="background:${color}"></span>${s.key}</span>
+          <span class="sport-val" style="color:${up?'var(--up)':'var(--down)'}">${up?'+':''}${diff}%</span>
+        </div>
+        <div class="sport-track"><div class="sport-fill" style="width:${pct}%;background:${up?color:'var(--down)'}"></div></div>
+        <div class="sport-meta"><span>${s.curV.toFixed(1)} ${s.unit}</span><span>ant: ${s.prevV.toFixed(1)} ${s.unit}</span></div>
+      </div>`;
+  });
+}
+
+// ── PACE ──────────────────────────────────────────────────────
+function renderPace() {
+  const weeks = getWeeks();
+  // Calcula pace médio por semana a partir de Atividades
+  const paceData = weeks.map(w => {
+    const sem = w['Semana'];
+    const runs = allAtividades.filter(a => {
+      const d = parseDateBR(a['Data']);
+      return d && getISOWeek(d) === sem && normalizeTipo(a['Tipo']) === 'Corrida' && a['Pace (min/km)'];
+    });
+    if (!runs.length) return null;
+    const paces = runs.map(r => parsePace(r['Pace (min/km)'])).filter(p => p > 0);
+    return paces.length ? paces.reduce((a,b)=>a+b,0)/paces.length : null;
+  }).filter(p => p !== null);
+
+  if (paceData.length < 2) {
+    document.getElementById('pace-svg').innerHTML = '<text fill="rgba(238,238,248,0.3)" x="150" y="45" text-anchor="middle" font-size="11" font-family="DM Mono,monospace">dados insuficientes</text>';
+    return;
+  }
+
+  const first = paceData[0]; const last = paceData[paceData.length-1];
+  const diffSec = Math.round((last - first) * 60);
+  const badge = document.getElementById('pace-badge');
+  if (diffSec < 0) { badge.className='badge badge-up'; badge.textContent=`↑ −${Math.abs(diffSec)}s/km`; }
+  else if (diffSec > 0) { badge.className='badge badge-down'; badge.textContent=`↓ +${diffSec}s/km`; }
+  else { badge.textContent=''; }
+
+  const svg = document.getElementById('pace-svg');
+  const n   = paceData.length;
+  const min = Math.min(...paceData)-0.05; const max = Math.max(...paceData)+0.05;
+  const pts = paceData.map((v,i)=>{
+    const x=(i/(n-1))*280+10; const y=82-((v-min)/(max-min))*72;
+    return `${x},${y}`;
+  });
+  svg.innerHTML = `
+    <defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--run)" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="var(--run)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="M ${pts.join(' L ')} L 290,90 L 10,90 Z" fill="url(#pg)"/>
+    <path d="M ${pts.join(' L ')}" fill="none" stroke="var(--run)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    ${paceData.map((v,i)=>{
+      const x=(i/(n-1))*280+10; const y=82-((v-min)/(max-min))*72;
+      const isCur=i===n-1;
+      return `<circle cx="${x}" cy="${y}" r="${isCur?4:2.5}" fill="${isCur?'var(--run)':'var(--bg)'}" stroke="var(--run)" stroke-width="1.5"/>`;
+    }).join('')}`;
+
+  const wks = weeks.filter((_,i) => i < paceData.length + (weeks.length - paceData.length));
+  document.getElementById('pace-start-label').textContent = weeks[0]?.['Semana']||'';
+  document.getElementById('pace-end-label').textContent   = weeks[weeks.length-1]?.['Semana']||'';
+}
+
+// ── ZONES ─────────────────────────────────────────────────────
+function renderZones() {
+  const weeks = getWeeks();
+  const curSemana = weeks[weeks.length-1]?.['Semana'];
+  const zoneColors = ['#4d9fff','#00e5a0','#ffe066','#ff9f43','#ff5f3d'];
+  const container = document.getElementById('zone-chart');
+
+  // Pega zonas da semana atual
+  const zRows = allZonas.filter(z => {
+    const d = parseDateBR(z['Data']);
+    return d && getISOWeek(d) === curSemana;
+  });
+
+  // Agrega % por zona
+  const totals = [0,0,0,0,0];
+  let count = 0;
+  zRows.forEach(z => {
+    ['% Z1','% Z2','% Z3','% Z4','% Z5'].forEach((col,i) => {
+      totals[i] += parseFloat(z[col])||0;
+    });
+    count++;
+  });
+
+  const pcts = count > 0 ? totals.map(v => Math.round(v/count)) : [20,40,25,10,5];
+
+  container.innerHTML = pcts.map((pct,i) => `
+    <div class="zone-row">
+      <span class="zone-name">Z${i+1}</span>
+      <div class="zone-track">
+        <div class="zone-fill" style="width:${pct}%;background:${zoneColors[i]}">${pct}%</div>
+      </div>
+      <span class="zone-pct">${pct}%</span>
+    </div>`).join('');
+}
+
+// ── SWIM ──────────────────────────────────────────────────────
+function renderSwim() {
+  const weeks    = getWeeks();
+  const curSemana = weeks[weeks.length-1]?.['Semana'];
+  const prevSemana = weeks[weeks.length-2]?.['Semana'];
+
+  const swimCur  = allAtividades.filter(a => { const d=parseDateBR(a['Data']); return d && getISOWeek(d)===curSemana  && normalizeTipo(a['Tipo'])==='Natação'; });
+  const swimPrev = allAtividades.filter(a => { const d=parseDateBR(a['Data']); return d && getISOWeek(d)===prevSemana && normalizeTipo(a['Tipo'])==='Natação'; });
+
+  // Pace médio 100m (está em Pace min/km, converte: 1km = 10x100m)
+  const avgPace = arr => {
+    const paces = arr.map(a => parsePace(a['Pace (min/km)'])).filter(p=>p>0);
+    return paces.length ? paces.reduce((a,b)=>a+b,0)/paces.length : 0;
+  };
+  const curPace100  = avgPace(swimCur) / 10;
+  const prevPace100 = avgPace(swimPrev) / 10;
+  const paceStr     = formatPace(curPace100);
+  const paceDiff    = curPace100 > 0 && prevPace100 > 0 ? Math.round((curPace100 - prevPace100)*60) : null;
+
+  const curKm   = swimCur.reduce((s,a)=>s+(parseFloat(a['Distância (km)'])||0),0);
+  const ytdKm   = allAtividades.filter(a=>normalizeTipo(a['Tipo'])==='Natação').reduce((s,a)=>s+(parseFloat(a['Distância (km)'])||0),0);
+
+  document.getElementById('swim-grid').innerHTML = [
+    { label:'Pace 100m',      val: paceStr||'—',            sub: paceDiff!==null ? (paceDiff<0?`↑ ${Math.abs(paceDiff)}s vs ant.`:`↓ +${paceDiff}s vs ant.`) : '—' },
+    { label:'Sessões semana', val: swimCur.length+'×',      sub: `meta: ${METAS['Natação']}× ${swimCur.length>=METAS['Natação']?'✓':''}` },
+    { label:'Dist. semana',   val: curKm.toFixed(2)+'km',   sub: '↑ esta semana' },
+    { label:'Dist. YTD',      val: ytdKm.toFixed(1)+'km',   sub: 'total acumulado' },
+  ].map(s=>`
+    <div class="swim-stat">
+      <div class="swim-stat-label">${s.label}</div>
+      <div class="swim-stat-val">${s.val}</div>
+      <div class="swim-stat-sub">${s.sub}</div>
+    </div>`).join('');
+
+  // Swim pace line chart por semana
+  const swimPaceData = weeks.map(w => {
+    const sem  = w['Semana'];
+    const rows = allAtividades.filter(a => { const d=parseDateBR(a['Data']); return d && getISOWeek(d)===sem && normalizeTipo(a['Tipo'])==='Natação'; });
+    const paces = rows.map(a=>parsePace(a['Pace (min/km)'])/10).filter(p=>p>0);
+    return paces.length ? paces.reduce((a,b)=>a+b,0)/paces.length : null;
+  });
+
+  const validPaces = swimPaceData.filter(p=>p!==null);
+  if (validPaces.length < 2) {
+    document.getElementById('swim-pace-svg').innerHTML = '<text fill="rgba(238,238,248,0.3)" x="200" y="35" text-anchor="middle" font-size="11" font-family="DM Mono,monospace">dados insuficientes</text>';
+    document.getElementById('swim-trend').textContent = '';
+    return;
+  }
+
+  const min = Math.min(...validPaces)-0.02; const max = Math.max(...validPaces)+0.02;
+  const allPts = swimPaceData.map((v,i)=>v!==null?{x:(i/(swimPaceData.length-1))*380+10,y:62-((v-min)/(max-min))*52}:null);
+  const validPts = allPts.filter(p=>p!==null);
+  const ptStr = validPts.map(p=>`${p.x},${p.y}`).join(' L ');
+
+  document.getElementById('swim-pace-svg').innerHTML = `
+    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--swim)" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="var(--swim)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="M ${ptStr} L ${validPts[validPts.length-1].x},70 L ${validPts[0].x},70 Z" fill="url(#sg)"/>
+    <path d="M ${ptStr}" fill="none" stroke="var(--swim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    ${validPts.map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="${i===validPts.length-1?4:2}" fill="${i===validPts.length-1?'var(--swim)':'var(--bg)'}" stroke="var(--swim)" stroke-width="1.5"/>`).join('')}`;
+
+  const trend = validPaces[validPaces.length-1] - validPaces[0];
+  const trendSec = Math.round(trend * 60);
+  document.getElementById('swim-trend').textContent = trendSec < 0 ? `↓ melhorando ${Math.abs(trendSec)}s` : trendSec > 0 ? `↑ desacelerando ${trendSec}s` : '→ estável';
+}
+
+// ── RESUMO TABLE ──────────────────────────────────────────────
+function renderResumo() {
+  if (!allResumo.length) return;
+  const container = document.getElementById('resumo-table');
+  container.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px">
+      <thead>
+        <tr style="color:var(--muted);border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:6px 0">Modalidade</th>
+          <th style="text-align:right;padding:6px 0">Total km</th>
+          <th style="text-align:right;padding:6px 0">Sessões</th>
+          <th style="text-align:right;padding:6px 0">Pace médio</th>
+          <th style="text-align:right;padding:6px 0">FC média</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${allResumo.map(r=>{
+          const color = SPORT_COLOR[r['Modalidade']]||'var(--muted2)';
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px 0;color:${color};font-weight:500">${r['Modalidade']||'—'}</td>
+            <td style="text-align:right;padding:8px 0;color:var(--text)">${parseFloat(r['Total km'])||0}</td>
+            <td style="text-align:right;padding:8px 0;color:var(--text)">${r['Total Atividades']||0}</td>
+            <td style="text-align:right;padding:8px 0;color:var(--text)">${r['Pace Médio']||'—'}</td>
+            <td style="text-align:right;padding:8px 0;color:var(--text)">${r['FC Média']||'—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ── HEATMAP ───────────────────────────────────────────────────
+function renderHeatmap() {
+  const dayLabels = ['D','S','T','Q','Q','S','S'];
+  const typeColor = { Corrida:'var(--run)', Bike:'var(--bike)', 'Bike (virtual)':'var(--bike)', 'Natação':'var(--swim)', Academia:'var(--gym)' };
+  const today = new Date();
+
+  // Mapeia atividades por data
+  const byDate = {};
+  allAtividades.forEach(a => {
+    const d = parseDateBR(a['Data']);
+    if (!d) return;
+    const key = d.toISOString().split('T')[0];
+    byDate[key] = a['Tipo'];
+  });
+
+  const container = document.getElementById('heatmap');
+  container.innerHTML = '';
+
+  dayLabels.forEach((dl, di) => {
+    const row = document.createElement('div');
+    row.className = 'heatmap-row';
+    row.innerHTML = `<span class="heatmap-day-label">${dl}</span>`;
+
+    for (let w=7; w>=0; w--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (w*7 + (6-di)));
+      const key  = d.toISOString().split('T')[0];
+      const tipo = byDate[key];
+      const tipo_norm = tipo ? normalizeTipo(tipo) : null;
+      const color = tipo_norm ? (typeColor[tipo_norm]||'var(--muted2)') : 'var(--surface2)';
+      const cell  = document.createElement('div');
+      cell.className   = 'heatmap-cell';
+      cell.style.background = color;
+      cell.style.opacity    = tipo_norm ? '0.8' : '1';
+      cell.title = tipo_norm ? `${key} · ${tipo_norm}` : key;
+      row.appendChild(cell);
+    }
+    container.appendChild(row);
+  });
+}
+
+// ── RENDER ALL ────────────────────────────────────────────────
+function renderAll() {
+  renderCountdown();
+  renderCards();
+  renderBars();
+  renderRadar();
+  renderProgress();
+  renderPace();
+  renderZones();
+  renderSwim();
+  renderResumo();
+  renderHeatmap();
+}
+
+// ── UTILS ─────────────────────────────────────────────────────
+function parseDateBR(str) {
+  if (!str) return null;
+
+  // Número serial do Google Sheets (ex: 46125)
+  if (typeof str === 'number') {
+    const utcDays = Math.floor(str) - 25569;
+    const d = new Date(utcDays * 86400 * 1000);
+    if (isNaN(d)) return null;
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  }
+
+  // String DD/MM/AAAA
+  if (typeof str === 'string') {
+    const s = str.trim();
+    if (s.includes('/')) {
+      const p = s.split('/');
+      if (p.length === 3) {
+        const d = new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0]));
+        return isNaN(d) ? null : d;
+      }
+    }
+    // ISO AAAA-MM-DD
+    if (s.includes('-')) {
+      const p = s.split('-');
+      if (p.length === 3) {
+        const d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+        return isNaN(d) ? null : d;
+      }
+    }
+  }
+  return null;
+}
+
+function getISOWeek(date) {
+  if (!date) return null;
+  const d = new Date(date);
+  if (isNaN(d)) return null;
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 4 - (d.getDay()||7));
+  const yearStart = new Date(d.getFullYear(),0,1);
+  const week = Math.ceil(((d-yearStart)/86400000+1)/7);
+  return `${d.getFullYear()}-S${week.toString().padStart(2,'0')}`;
+}
+
+function normalizeTipo(tipo) {
+  if (!tipo) return '';
+  if (tipo.includes('Corrida') || tipo === 'Run') return 'Corrida';
+  if (tipo.includes('Bike') || tipo.includes('Ride')) return 'Bike';
+  if (tipo.includes('Natação') || tipo === 'Swim') return 'Natação';
+  if (tipo.includes('Academia') || tipo.includes('Musculação') || tipo.includes('Weight') || tipo.includes('Workout')) return 'Academia';
+  return tipo;
+}
+
+function parsePace(str) {
+  if (!str) return 0;
+  if (typeof str === 'number') return str;
+  const parts = str.toString().split(':');
+  if (parts.length === 2) return parseInt(parts[0]) + parseInt(parts[1])/60;
+  return parseFloat(str)||0;
+}
+
+function formatPace(minPerKm) {
+  if (!minPerKm || minPerKm <= 0) return '—';
+  const min = Math.floor(minPerKm);
+  const sec = Math.round((minPerKm - min)*60);
+  return `${min}:${sec.toString().padStart(2,'0')}`;
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+loadAll();
+</script>
+</body>
+</html>
